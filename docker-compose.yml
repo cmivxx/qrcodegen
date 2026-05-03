@@ -4,7 +4,7 @@ services:
     container_name: qrcode-app
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8086:8000"
     environment:
       - FLASK_ENV=production
     healthcheck:
