@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Free QR code and barcode generator. Create QR codes for URLs, contacts, Wi-Fi, email, SMS, calendar events, and more. Download as PNG or SVG.">
+<meta name="author" content="ChrisRMiller.com">
+<title>QR Code Generator | ChrisRMiller.com</title>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-PD7DGWW92P"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-PD7DGWW92P');
+</script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3347;
+    --accent: #6c63ff;
+    --accent2: #00d4aa;
+    --text: #e8eaf6;
+    --text-muted: #8b91b0;
+    --danger: #ff5c7c;
+    --success: #00d4aa;
+    --input-bg: #12141e;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.4);
+    --transition: 0.2s ease;
+  }
+  [data-theme="light"] {
+    --bg: #f0f2f8;
+    --surface: #ffffff;
+    --surface2: #f5f7ff;
+    --border: #dde2f0;
+    --text: #1a1d2e;
+    --text-muted: #6b7280;
+    --input-bg: #f8f9ff;
+    --shadow: 0 8px 32px rgba(0,0,0,0.08);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-text { display: flex; flex-direction: column; gap: 1px; }
+  .logo-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .logo-by {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+  .logo-by a {
+    color: var(--accent2);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .logo-by a:hover { text-decoration: underline; }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .header-actions { display: flex; align-items: center; gap: 12px; }
+  .theme-toggle {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 36px; height: 36px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    color: var(--text);
+    transition: var(--transition);
+  }
+  .theme-toggle:hover { background: var(--border); }
+
+  /* ── Layout ── */
+  .app {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    min-height: calc(100vh - 60px);
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .preview-panel { position: relative; top: 0; min-height: 400px; }
+  }
+
+  /* ── Left Panel ── */
+  .form-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 1.5rem;
+    overflow-y: auto;
+    max-height: calc(100vh - 60px);
+  }
+
+  /* ── Section titles ── */
+  .section-title {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .section-title:first-of-type { margin-top: 0; }
+
+  /* ── Format Tabs ── */
+  .format-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .tab-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+  }
+  .tab-btn:hover { border-color: var(--accent); color: var(--text); }
+  .tab-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* ── Content Type Pills (QR subtypes) ── */
+  .content-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .pill {
+    padding: 5px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+  }
+  .pill:hover { border-color: var(--accent2); color: var(--text); }
+  .pill.active {
+    background: rgba(0,212,170,0.15);
+    border-color: var(--accent2);
+    color: var(--accent2);
+  }
+
+  /* ── Form Elements ── */
+  .field { margin-bottom: 0.9rem; }
+  label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+  }
+  input[type="text"], input[type="email"], input[type="tel"],
+  input[type="number"], input[type="datetime-local"],
+  input[type="color"], textarea, select {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    color: var(--text);
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: border-color var(--transition);
+    outline: none;
+    -webkit-appearance: none;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+  }
+  textarea { resize: vertical; min-height: 80px; }
+  select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b91b0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+
+  /* ── Color row ── */
+  .color-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .color-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    transition: border-color var(--transition);
+  }
+  .color-field:focus-within { border-color: var(--accent); }
+  .color-field input[type="color"] {
+    width: 28px; height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: none;
+  }
+  .color-field input[type="text"] {
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: 0.82rem;
+    font-family: monospace;
+    flex: 1;
+  }
+  .color-field input[type="text"]:focus { box-shadow: none; }
+
+  /* ── Row layout ── */
+  .row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  /* ── Range slider ── */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 0 3px rgba(108,99,255,0.2);
+  }
+  .slider-val {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 48px;
+    text-align: right;
+  }
+
+  /* ── Toggle / Checkbox ── */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+  }
+  .toggle-label { font-size: 0.82rem; color: var(--text-muted); }
+  .toggle {
+    position: relative;
+    width: 40px; height: 22px;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 22px;
+    cursor: pointer;
+    transition: var(--transition);
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    left: 3px; top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: var(--transition);
+  }
+  .toggle input:checked + .toggle-slider { background: var(--accent); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+  /* ── EC Level buttons ── */
+  .ec-group {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .ec-btn {
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: var(--transition);
+  }
+  .ec-btn:hover { border-color: var(--accent); color: var(--text); }
+  .ec-btn.active {
+    background: rgba(108,99,255,0.2);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Generate Button ── */
+  .btn-generate {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    border: none;
+    border-radius: var(--radius);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1.25rem;
+    transition: opacity var(--transition), transform var(--transition);
+    letter-spacing: 0.01em;
+  }
+  .btn-generate:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-generate:active { transform: translateY(0); }
+  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ── Divider ── */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1.25rem 0;
+  }
+
+  /* ── Right Panel ── */
+  .preview-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 2.5rem 2rem;
+    position: sticky;
+    top: 60px;
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+  }
+
+  .preview-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 460px;
+    box-shadow: var(--shadow);
+  }
+
+  .preview-title {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-muted);
+    letter-spacing: -0.01em;
+  }
+
+  .preview-frame {
+    width: 280px; height: 280px;
+    background: var(--surface2);
+    border-radius: var(--radius);
+    border: 2px dashed var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    transition: border-color var(--transition);
+  }
+  .preview-frame.has-image {
+    border-style: solid;
+    border-color: var(--accent);
+    background: white;
+  }
+  .preview-frame img {
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+  }
+  .preview-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-muted);
+  }
+  .preview-placeholder .icon { font-size: 48px; opacity: 0.3; }
+  .preview-placeholder p { font-size: 0.82rem; }
+
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Download buttons ── */
+  .download-group {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+  .btn-dl {
+    flex: 1;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-dl:hover { border-color: var(--accent2); color: var(--accent2); }
+  .btn-dl:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-dl-svg { }
+
+  /* ── Copy URL ── */
+  .copy-url-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  .copy-url-row input {
+    flex: 1;
+    font-size: 0.75rem;
+    font-family: monospace;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    color: var(--text-muted);
+  }
+  .btn-copy {
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+  }
+  .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Error / info banner ── */
+  .banner {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    display: none;
+  }
+  .banner.error { background: rgba(255,92,124,0.12); border: 1px solid var(--danger); color: var(--danger); }
+  .banner.info { background: rgba(0,212,170,0.1); border: 1px solid var(--accent2); color: var(--accent2); }
+
+  /* ── Output format row ── */
+  .output-fmt-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .fmt-opt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    transition: var(--transition);
+  }
+  .fmt-opt input { accent-color: var(--accent); }
+  .fmt-opt:has(input:checked) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(108,99,255,0.1);
+  }
+
+  /* ── Hidden ── */
+  .hidden { display: none !important; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">&#9638;</div>
+    <div class="logo-text">
+      <span class="logo-title">QR Code Generator</span>
+      <span class="logo-by">by <a href="https://chrisrmiller.com" target="_blank" rel="noopener noreferrer">ChrisRMiller.com</a></span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">&#9788;</button>
+  </div>
+</header>
+
+<div class="app">
+  <!-- ══════════════════ LEFT PANEL ══════════════════ -->
+  <div class="form-panel">
+
+    <p class="section-title">Format</p>
+    <div class="format-tabs">
+      <button class="tab-btn active" data-format="qrcode">QR Code</button>
+      <button class="tab-btn" data-format="code128">Code 128</button>
+      <button class="tab-btn" data-format="code39">Code 39</button>
+      <button class="tab-btn" data-format="ean13">EAN-13</button>
+      <button class="tab-btn" data-format="ean8">EAN-8</button>
+      <button class="tab-btn" data-format="upca">UPC-A</button>
+      <button class="tab-btn" data-format="itf">ITF</button>
+      <button class="tab-btn" data-format="codabar">Codabar</button>
+    </div>
+
+    <!-- ══ QR Content Type ══ -->
+    <div id="qr-section">
+      <p class="section-title">Content Type</p>
+      <div class="content-pills">
+        <button class="pill active" data-content="text">Plain Text</button>
+        <button class="pill" data-content="url">URL</button>
+        <button class="pill" data-content="email">Email</button>
+        <button class="pill" data-content="phone">Phone</button>
+        <button class="pill" data-content="sms">SMS</button>
+        <button class="pill" data-content="wifi">Wi-Fi</button>
+        <button class="pill" data-content="contact">Contact</button>
+        <button class="pill" data-content="geo">Location</button>
+        <button class="pill" data-content="calendar">Calendar</button>
+      </div>
+
+      <!-- text -->
+      <div class="content-form" id="cf-text">
+        <div class="field">
+          <label>Text</label>
+          <textarea name="text" placeholder="Enter any text…" rows="4"></textarea>
+        </div>
+      </div>
+
+      <!-- url -->
+      <div class="content-form hidden" id="cf-url">
+        <div class="field">
+          <label>URL</label>
+          <input type="text" name="url" placeholder="https://example.com">
+        </div>
+      </div>
+
+      <!-- email -->
+      <div class="content-form hidden" id="cf-email">
+        <div class="field">
+          <label>Email Address</label>
+          <input type="text" name="email_addr" placeholder="user@example.com">
+        </div>
+        <div class="field">
+          <label>Subject</label>
+          <input type="text" name="email_subject" placeholder="Optional subject">
+        </div>
+        <div class="field">
+          <label>Body</label>
+          <textarea name="email_body" placeholder="Optional message body" rows="3"></textarea>
+        </div>
+      </div>
+
+      <!-- phone -->
+      <div class="content-form hidden" id="cf-phone">
+        <div class="field">
+          <label>Phone Number</label>
+          <input type="text" name="phone" placeholder="+1 555 000 0000">
+        </div>
+      </div>
+
+      <!-- sms -->
+      <div class="content-form hidden" id="cf-sms">
+        <div class="field">
+          <label>Phone Number</label>
+          <input type="text" name="sms_number" placeholder="+1 555 000 0000">
+        </div>
+        <div class="field">
+          <label>Message</label>
+          <textarea name="sms_body" placeholder="Optional message" rows="3"></textarea>
+        </div>
+      </div>
+
+      <!-- wifi -->
+      <div class="content-form hidden" id="cf-wifi">
+        <div class="field">
+          <label>Network Name (SSID)</label>
+          <input type="text" name="wifi_ssid" placeholder="MyNetwork">
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label>Security</label>
+            <select name="wifi_auth">
+              <option value="WPA">WPA/WPA2</option>
+              <option value="WEP">WEP</option>
+              <option value="nopass">None</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="text" name="wifi_password" placeholder="Password">
+          </div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Hidden network</span>
+          <label class="toggle"><input type="checkbox" name="wifi_hidden"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+
+      <!-- contact -->
+      <div class="content-form hidden" id="cf-contact">
+        <div class="field">
+          <label>Full Name</label>
+          <input type="text" name="contact_name" placeholder="Jane Doe">
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label>Phone</label>
+            <input type="text" name="contact_phone" placeholder="+1 555 000 0000">
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="text" name="contact_email" placeholder="jane@example.com">
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label>Organization</label>
+            <input type="text" name="contact_org" placeholder="Acme Corp">
+          </div>
+          <div class="field">
+            <label>Website</label>
+            <input type="text" name="contact_url" placeholder="https://…">
+          </div>
+        </div>
+        <div class="field">
+          <label>Address</label>
+          <input type="text" name="contact_addr" placeholder="123 Main St, City">
+        </div>
+      </div>
+
+      <!-- geo -->
+      <div class="content-form hidden" id="cf-geo">
+        <div class="row-2">
+          <div class="field">
+            <label>Latitude</label>
+            <input type="text" name="geo_lat" placeholder="37.7749">
+          </div>
+          <div class="field">
+            <label>Longitude</label>
+            <input type="text" name="geo_lng" placeholder="-122.4194">
+          </div>
+        </div>
+        <div class="field">
+          <label>Query / Label</label>
+          <input type="text" name="geo_query" placeholder="Optional label">
+        </div>
+      </div>
+
+      <!-- calendar -->
+      <div class="content-form hidden" id="cf-calendar">
+        <div class="field">
+          <label>Event Title</label>
+          <input type="text" name="cal_summary" placeholder="Team Meeting">
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label>Start</label>
+            <input type="datetime-local" name="cal_start">
+          </div>
+          <div class="field">
+            <label>End</label>
+            <input type="datetime-local" name="cal_end">
+          </div>
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <input type="text" name="cal_location" placeholder="Room 4B">
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <textarea name="cal_desc" placeholder="Details…" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 1D Barcode data ══ -->
+    <div id="barcode-section" class="hidden">
+      <div class="field">
+        <label>Data</label>
+        <input type="text" name="barcode_data" placeholder="Enter value to encode">
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ══ QR Options ══ -->
+    <div id="qr-options">
+      <p class="section-title">Error Correction</p>
+      <div class="ec-group">
+        <button class="ec-btn" data-ec="L">L <span style="font-weight:400;font-size:0.7rem">7%</span></button>
+        <button class="ec-btn active" data-ec="M">M <span style="font-weight:400;font-size:0.7rem">15%</span></button>
+        <button class="ec-btn" data-ec="Q">Q <span style="font-weight:400;font-size:0.7rem">25%</span></button>
+        <button class="ec-btn" data-ec="H">H <span style="font-weight:400;font-size:0.7rem">30%</span></button>
+      </div>
+    </div>
+
+    <!-- ══ 1D Barcode options ══ -->
+    <div id="barcode-options" class="hidden">
+      <div class="field">
+        <label>Bar Height (mm)</label>
+        <div class="slider-row">
+          <input type="range" id="bar-height-range" min="5" max="50" value="15"
+                 oninput="document.getElementById('bar-height-val').textContent=this.value+'mm';document.querySelector('[name=bar_height]').value=this.value">
+          <span class="slider-val" id="bar-height-val">15mm</span>
+        </div>
+        <input type="hidden" name="bar_height" value="15">
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show text below barcode</span>
+        <label class="toggle"><input type="checkbox" name="show_text" value="true" checked><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- ══ Size ══ -->
+    <p class="section-title">Size</p>
+    <div class="field">
+      <div class="slider-row">
+        <input type="range" id="size-range" min="100" max="1000" value="300" step="50"
+               oninput="document.getElementById('size-val').textContent=this.value+'px';document.querySelector('[name=size]').value=this.value">
+        <span class="slider-val" id="size-val">300px</span>
+      </div>
+      <input type="hidden" name="size" value="300">
+    </div>
+
+    <!-- ══ Margin ══ -->
+    <p class="section-title">Margin (modules)</p>
+    <div class="field">
+      <div class="slider-row">
+        <input type="range" id="margin-range" min="0" max="10" value="4"
+               oninput="document.getElementById('margin-val').textContent=this.value;document.querySelector('[name=margin]').value=this.value">
+        <span class="slider-val" id="margin-val">4</span>
+      </div>
+      <input type="hidden" name="margin" value="4">
+    </div>
+
+    <!-- ══ Colors (QR only) ══ -->
+    <div id="color-options">
+      <p class="section-title">Colors</p>
+      <div class="color-row">
+        <div class="field">
+          <label>Foreground</label>
+          <div class="color-field">
+            <input type="color" id="fg-picker" value="#000000" oninput="syncColor('fg', this.value)">
+            <input type="text" id="fg-hex" value="#000000" maxlength="7" oninput="syncColorHex('fg', this.value)">
+          </div>
+        </div>
+        <div class="field">
+          <label>Background</label>
+          <div class="color-field">
+            <input type="color" id="bg-picker" value="#ffffff" oninput="syncColor('bg', this.value)">
+            <input type="text" id="bg-hex" value="#ffffff" maxlength="7" oninput="syncColorHex('bg', this.value)">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ Output format ══ -->
+    <p class="section-title">Output Format</p>
+    <div class="output-fmt-row">
+      <label class="fmt-opt"><input type="radio" name="output_format" value="png" checked> PNG</label>
+      <label class="fmt-opt"><input type="radio" name="output_format" value="svg"> SVG</label>
+    </div>
+
+    <input type="hidden" name="format" id="format-input" value="qrcode">
+    <input type="hidden" name="content_type" id="content-type-input" value="text">
+    <input type="hidden" name="ec_level" id="ec-input" value="M">
+    <input type="hidden" name="fg_color" id="fg-input" value="#000000">
+    <input type="hidden" name="bg_color" id="bg-input" value="#ffffff">
+
+    <button class="btn-generate" onclick="generate()">Generate</button>
+
+  </div>
+
+  <!-- ══════════════════ RIGHT PANEL ══════════════════ -->
+  <div class="preview-panel">
+    <div class="preview-card">
+      <div class="preview-title">Preview</div>
+
+      <div class="preview-frame" id="preview-frame">
+        <div class="preview-placeholder" id="preview-placeholder">
+          <div class="icon">&#9638;</div>
+          <p>Configure and generate</p>
+        </div>
+        <div class="spinner" id="spinner"></div>
+        <img id="preview-img" style="display:none" alt="Generated code">
+      </div>
+
+      <div class="banner error" id="error-banner"></div>
+      <div class="banner info" id="info-banner"></div>
+
+      <div class="download-group">
+        <button class="btn-dl" id="btn-dl-png" disabled onclick="download('png')">
+          &#8681; Download PNG
+        </button>
+        <button class="btn-dl btn-dl-svg" id="btn-dl-svg" disabled onclick="download('svg')">
+          &#8681; Download SVG
+        </button>
+      </div>
+
+      <div class="copy-url-row">
+        <input type="text" id="api-url-display" readonly placeholder="API URL will appear here">
+        <button class="btn-copy" onclick="copyApiUrl()">Copy URL</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let currentFormat = 'qrcode';
+let currentContentType = 'text';
+let currentEC = 'M';
+let lastImageDataUrl = null;
+let lastMime = null;
+
+// ── Theme ──
+function toggleTheme() {
+  const html = document.documentElement;
+  html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+}
+
+// ── Format tabs ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFormat = btn.dataset.format;
+    document.getElementById('format-input').value = currentFormat;
+    const isQR = currentFormat === 'qrcode';
+    document.getElementById('qr-section').classList.toggle('hidden', !isQR);
+    document.getElementById('qr-options').classList.toggle('hidden', !isQR);
+    document.getElementById('barcode-section').classList.toggle('hidden', isQR);
+    document.getElementById('barcode-options').classList.toggle('hidden', isQR);
+    document.getElementById('color-options').classList.toggle('hidden', !isQR);
+  });
+});
+
+// ── Content pills ──
+document.querySelectorAll('.pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    currentContentType = pill.dataset.content;
+    document.getElementById('content-type-input').value = currentContentType;
+    document.querySelectorAll('.content-form').forEach(f => f.classList.add('hidden'));
+    const cf = document.getElementById('cf-' + currentContentType);
+    if (cf) cf.classList.remove('hidden');
+  });
+});
+
+// ── EC buttons ──
+document.querySelectorAll('.ec-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ec-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentEC = btn.dataset.ec;
+    document.getElementById('ec-input').value = currentEC;
+  });
+});
+
+// ── Color sync ──
+function syncColor(which, val) {
+  document.getElementById(which + '-hex').value = val;
+  document.getElementById(which + '-input').value = val;
+}
+function syncColorHex(which, val) {
+  if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+    document.getElementById(which + '-picker').value = val;
+    document.getElementById(which + '-input').value = val;
+  }
+}
+
+// ── Collect form data ──
+function collectFormData() {
+  const fd = new FormData();
+  fd.append('format', currentFormat);
+  fd.append('content_type', currentContentType);
+  fd.append('ec_level', currentEC);
+  fd.append('size', document.querySelector('[name=size]').value);
+  fd.append('margin', document.querySelector('[name=margin]').value);
+  fd.append('fg_color', document.getElementById('fg-input').value);
+  fd.append('bg_color', document.getElementById('bg-input').value);
+
+  const ofmt = document.querySelector('[name=output_format]:checked');
+  fd.append('output_format', ofmt ? ofmt.value : 'png');
+
+  // All named inputs in active content form
+  const activeForm = document.getElementById('cf-' + currentContentType);
+  if (activeForm) {
+    activeForm.querySelectorAll('[name]').forEach(el => {
+      if (el.type === 'checkbox') {
+        if (el.checked) fd.append(el.name, el.value || 'true');
+      } else {
+        fd.append(el.name, el.value);
+      }
+    });
+  }
+
+  // 1D barcode fields
+  const bdEl = document.querySelector('[name=barcode_data]');
+  if (bdEl) fd.append('barcode_data', bdEl.value);
+  const bhEl = document.querySelector('[name=bar_height]');
+  if (bhEl) fd.append('bar_height', bhEl.value);
+  const stEl = document.querySelector('[name=show_text]');
+  if (stEl) fd.append('show_text', stEl.checked ? 'true' : 'false');
+
+  return fd;
+}
+
+// ── Generate ──
+async function generate() {
+  const btn = document.querySelector('.btn-generate');
+  const spinner = document.getElementById('spinner');
+  const img = document.getElementById('preview-img');
+  const placeholder = document.getElementById('preview-placeholder');
+  const frame = document.getElementById('preview-frame');
+  const errorBanner = document.getElementById('error-banner');
+  const infoBanner = document.getElementById('info-banner');
+
+  errorBanner.style.display = 'none';
+  infoBanner.style.display = 'none';
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  img.style.display = 'none';
+  placeholder.style.display = 'none';
+
+  try {
+    const fd = collectFormData();
+    const res = await fetch('/api/generate', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Generation failed');
+    }
+
+    lastImageDataUrl = data.image;
+    lastMime = data.mime;
+
+    img.src = data.image;
+    img.style.display = 'block';
+    frame.classList.add('has-image');
+
+    document.getElementById('btn-dl-png').disabled = false;
+    document.getElementById('btn-dl-svg').disabled = false;
+
+    updateApiUrl(fd);
+
+    infoBanner.textContent = 'Generated successfully';
+    infoBanner.style.display = 'block';
+    setTimeout(() => { infoBanner.style.display = 'none'; }, 2000);
+
+  } catch (err) {
+    errorBanner.textContent = err.message;
+    errorBanner.style.display = 'block';
+    placeholder.style.display = 'flex';
+  } finally {
+    spinner.style.display = 'none';
+    btn.disabled = false;
+  }
+}
+
+// ── Download ──
+async function download(fmt) {
+  const fd = collectFormData();
+  // override output format for download
+  fd.set('output_format', fmt);
+
+  const res = await fetch('/api/generate/download', { method: 'POST', body: fd });
+  if (!res.ok) { alert('Download failed'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (currentFormat === 'qrcode' ? 'qrcode' : currentFormat) + '.' + fmt;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── API URL display ──
+function updateApiUrl(fd) {
+  const params = new URLSearchParams();
+  for (const [k, v] of fd.entries()) params.set(k, v);
+  const url = window.location.origin + '/api/generate?' + params.toString();
+  document.getElementById('api-url-display').value = url;
+}
+
+async function copyApiUrl() {
+  const el = document.getElementById('api-url-display');
+  if (!el.value) return;
+  try {
+    await navigator.clipboard.writeText(el.value);
+    const btn = document.querySelector('.btn-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy URL'; }, 1500);
+  } catch (_) {
+    el.select(); document.execCommand('copy');
+  }
+}
+
+// Auto-generate on Enter in text inputs
+document.querySelectorAll('input[type="text"], input[type="datetime-local"]').forEach(el => {
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') generate(); });
+});
+</script>
+</body>
+</html>
