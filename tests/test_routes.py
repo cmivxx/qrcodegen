@@ -178,3 +178,45 @@ class TestRoot:
         rv = client.get('/')
         assert rv.status_code in (301, 302)
         assert '/generator' in rv.headers['Location']
+
+
+# ── Security headers (set via Flask after_request) ───────────────────────────
+
+class TestSecurityHeaders:
+    def test_csp_present_on_ui(self, client):
+        rv = client.get('/generator')
+        csp = rv.headers.get('Content-Security-Policy', '')
+        assert "default-src 'self'" in csp
+        assert 'frame-ancestors' in csp
+
+    def test_csp_allows_google_analytics(self, client):
+        rv = client.get('/generator')
+        csp = rv.headers.get('Content-Security-Policy', '')
+        assert 'googletagmanager.com' in csp
+        assert 'google-analytics.com' in csp
+
+    def test_x_frame_options(self, client):
+        rv = client.get('/generator')
+        assert rv.headers.get('X-Frame-Options') == 'SAMEORIGIN'
+
+    def test_x_content_type_options(self, client):
+        rv = client.get('/generator')
+        assert rv.headers.get('X-Content-Type-Options') == 'nosniff'
+
+    def test_referrer_policy(self, client):
+        rv = client.get('/generator')
+        assert rv.headers.get('Referrer-Policy') == 'strict-origin-when-cross-origin'
+
+    def test_permissions_policy(self, client):
+        rv = client.get('/generator')
+        pp = rv.headers.get('Permissions-Policy', '')
+        assert 'geolocation=()' in pp
+        assert 'microphone=()' in pp
+        assert 'camera=()' in pp
+
+    def test_headers_present_on_api(self, client):
+        rv = client.post('/api/generate', data={
+            'format': 'qrcode', 'content_type': 'text', 'text': 'hi',
+        })
+        assert rv.headers.get('X-Content-Type-Options') == 'nosniff'
+        assert 'Content-Security-Policy' in rv.headers

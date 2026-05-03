@@ -11,6 +11,30 @@ from flask import Blueprint, render_template, request, send_file, jsonify
 
 qr_bp = Blueprint('qr', __name__)
 
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com; "
+    "img-src 'self' data: https://www.google-analytics.com; "
+    "connect-src 'self' https://www.google-analytics.com https://analytics.google.com; "
+    "style-src 'self' 'unsafe-inline'; "
+    "font-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self';"
+)
+
+
+@qr_bp.after_request
+def _security_headers(resp):
+    resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    resp.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+    resp.headers.setdefault('Content-Security-Policy', _CSP)
+    return resp
+
+
 ERROR_LEVELS = {'L': ERROR_CORRECT_L, 'M': ERROR_CORRECT_M, 'Q': ERROR_CORRECT_Q, 'H': ERROR_CORRECT_H}
 
 BARCODE_FORMATS = {

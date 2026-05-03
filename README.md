@@ -22,7 +22,7 @@
 [![Python](https://img.shields.io/badge/Python-3.9+-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-3.x-000000?style=for-the-badge&logo=flask)](https://flask.palletsprojects.com)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
-[![nginx](https://img.shields.io/badge/nginx-1.25-009639?style=for-the-badge&logo=nginx)](https://nginx.org)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Tunnel-f38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://www.cloudflare.com/products/tunnel/)
 [![License](https://img.shields.io/badge/License-MIT-00d4aa?style=for-the-badge)](LICENSE)
 
 </div>
@@ -73,31 +73,37 @@ docker compose up -d
 open http://localhost
 ```
 
-> **Production?** Point your DNS to the server and update `server_name` in [`nginx/nginx.conf`](nginx/nginx.conf).
+> **Production?** Front it with Cloudflare (or your reverse proxy of choice) for TLS, WAF, and rate limiting.
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-                        ┌──────────────────────────────┐
-  Browser / Client ───► │   nginx:1.25-alpine           │
-                        │                              │
-                        │  • Rate limiting             │
-                        │  • Security headers (CSP)    │
-                        │  • Gzip compression          │
-                        │  • /api/generate: 10 req/min │
-                        └──────────────┬───────────────┘
-                                       │  internal bridge network
-                        ┌──────────────▼───────────────┐
-                        │   Python 3.9 + Gunicorn       │
-                        │   (4 workers · non-root user) │
-                        │                              │
-                        │  /generator   → UI           │
-                        │  /api/generate → PNG/SVG     │
-                        │  /api/generate/download      │
-                        └──────────────────────────────┘
+                       ┌────────────────────────────────┐
+   Browser / Client ──►│  Cloudflare (or proxy of       │
+                       │  choice)                       │
+                       │                                │
+                       │  • TLS termination             │
+                       │  • WAF & rate limiting         │
+                       │  • DDoS protection             │
+                       │  • Gzip / HTTP/2               │
+                       └────────────────┬───────────────┘
+                                        │
+                       ┌────────────────▼───────────────┐
+                       │  Python 3.9 + Gunicorn         │
+                       │  (4 workers · non-root user)   │
+                       │                                │
+                       │  /generator   → UI             │
+                       │  /api/generate → PNG/SVG       │
+                       │  /api/generate/download        │
+                       │                                │
+                       │  Adds CSP + security headers   │
+                       │  via Flask after_request hook  │
+                       └────────────────────────────────┘
 ```
+
+The app is intentionally a **single container** — it relies on an upstream proxy (Cloudflare, Traefik, etc.) for TLS, rate limiting, and edge concerns. This keeps the deployment small, the moving parts few, and the responsibilities clean.
 
 ### Project structure
 
@@ -107,10 +113,11 @@ qrcodegen/
 ├── preview_app.py           # WSGI entry point (gunicorn target)
 ├── gunicorn_config.py       # 4 workers, 30s timeout, stdout logs
 ├── Dockerfile               # python:3.9-slim, non-root appuser
-├── docker-compose.yml       # app + nginx services
+├── docker-compose.yml       # single-service stack
 ├── requirements.txt
-├── nginx/
-│   └── nginx.conf           # rate limiting, CSP, security headers
+├── tests/                   # pytest suite (helpers + routes)
+├── docs/
+│   └── INTEGRATIONS.md      # URL shortener integration contract
 └── templates/
     └── qr_generator.html    # Single-page UI (no JS framework needed)
 ```
@@ -245,34 +252,26 @@ curl -s -X POST https://qrcode.chrisrmiller.com/api/generate \
 │  ✓ All string inputs length-limited                          │
 │  ✓ format / content_type / wifi_auth use strict allowlists   │
 │  ✓ Errors never leak exception details to clients            │
-├─ nginx ──────────────────────────────────────────────────────┤
-│  ✓ /api/generate rate-limited to 10 req/min per IP           │
-│  ✓ Content-Security-Policy header                            │
+├─ HTTP Headers (set by Flask after_request) ──────────────────┤
+│  ✓ Content-Security-Policy (script/img/connect locked down)  │
 │  ✓ X-Frame-Options: SAMEORIGIN                               │
 │  ✓ X-Content-Type-Options: nosniff                           │
 │  ✓ Referrer-Policy: strict-origin-when-cross-origin          │
 │  ✓ Permissions-Policy (geo/mic/camera blocked)               │
-│  ✓ server_tokens off                                         │
-│  ✓ Hidden dot-paths denied                                   │
 ├─ Container ──────────────────────────────────────────────────┤
 │  ✓ Runs as non-root appuser (UID 1001)                       │
 │  ✓ No database — zero persistent attack surface              │
-│  ✓ Internal bridge network (app never exposed directly)      │
+│  ✓ Stateless — restart at will, no migrations                │
+├─ Edge (delegated to Cloudflare or your reverse proxy) ───────┤
+│  ✓ TLS termination                                           │
+│  ✓ WAF & rate limiting                                       │
+│  ✓ DDoS protection                                           │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## ⚙️ Configuration
-
-### nginx — `nginx/nginx.conf`
-
-| Setting | Default | Description |
-|---|---|---|
-| `server_name` | `qrcode.chrisrmiller.com` | Your domain |
-| `rate=10r/m` | 10/min | API rate limit per IP |
-| `burst=5` | 5 | Burst allowance |
-| `client_max_body_size` | `256k` | Max POST body |
 
 ### gunicorn — `gunicorn_config.py`
 
@@ -306,7 +305,6 @@ Open [http://localhost:5050/generator](http://localhost:5050/generator).
 | QR generation | [qrcode](https://github.com/lincolnloop/python-qrcode) + Pillow |
 | 1D barcodes | [python-barcode](https://github.com/WhyNotHugo/python-barcode) |
 | WSGI server | Gunicorn |
-| Reverse proxy | nginx 1.25-alpine |
 | Containerization | Docker + Compose |
 | Analytics | Google Analytics 4 |
 | UI | Vanilla HTML/CSS/JS (zero JS framework) |
