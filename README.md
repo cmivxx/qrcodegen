@@ -313,6 +313,18 @@ Open [http://localhost:5050/generator](http://localhost:5050/generator).
 
 ---
 
+## 🔗 Integrations
+
+The QR generator runs fully standalone, but has a documented seam for an
+**optional URL shortener** that adds click analytics and editable
+destinations for printed QR codes. Shortener is a separate, independently
+deployable app — the QR generator stays stateless either way.
+
+→ See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the API contract,
+env vars, and failure behavior.
+
+---
+
 ## 📄 License
 
 MIT © [ChrisRMiller.com](https://chrisrmiller.com)

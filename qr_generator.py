@@ -56,7 +56,22 @@ def _build_qr_data(form):
         return ''
 
     if content_type == 'url':
-        return form.get('url', '')[:MAX_DATA_LEN]
+        url = form.get('url', '')[:MAX_DATA_LEN]
+        # ── Future: URL shortener integration ─────────────────────────────
+        # When the shortener app is deployed, a "Track scans" toggle will
+        # appear in the UI for this content type. If the toggle is on AND
+        # the SHORTENER_API_URL env var is set, replace `url` here with the
+        # short URL returned from the shortener service.
+        #
+        # Env vars (read at app startup, not here):
+        #   SHORTENER_API_URL     e.g. https://short.chrisrmiller.com/api
+        #   SHORTENER_API_KEY     bearer token for service-to-service auth
+        #   SHORTENER_PUBLIC_URL  short domain shown in the UI / encoded in QR
+        #
+        # Contract & failure behavior: see docs/INTEGRATIONS.md
+        # Implementation: shortener_client.py (to be added)
+        # ──────────────────────────────────────────────────────────────────
+        return url
 
     if content_type == 'text':
         return form.get('text', '')[:MAX_DATA_LEN]
