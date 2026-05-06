@@ -171,6 +171,58 @@ class TestDownloadApi:
         assert rv.status_code == 400
 
 
+# ── GET /api/qr (img-src shim) ───────────────────────────────────────────────
+
+class TestQrImageGet:
+    def test_png_returns_inline_image_bytes(self, client):
+        rv = client.get('/api/qr?data=https://example.com&size=256&format=png')
+        assert rv.status_code == 200
+        assert rv.mimetype == 'image/png'
+        # Inline, not attachment — must embed in <img src>
+        assert 'attachment' not in rv.headers.get('Content-Disposition', '')
+        assert rv.data[:8] == b'\x89PNG\r\n\x1a\n'
+
+    def test_svg_returns_svg_bytes(self, client):
+        rv = client.get('/api/qr?data=hello&format=svg')
+        assert rv.status_code == 200
+        assert rv.mimetype == 'image/svg+xml'
+        assert b'<svg' in rv.data
+
+    def test_missing_data_returns_400(self, client):
+        rv = client.get('/api/qr')
+        assert rv.status_code == 400
+        assert 'error' in rv.get_json()
+
+    def test_empty_data_returns_400(self, client):
+        rv = client.get('/api/qr?data=')
+        assert rv.status_code == 400
+
+    def test_default_size_when_omitted(self, client):
+        rv = client.get('/api/qr?data=hi')
+        assert rv.status_code == 200
+        assert rv.mimetype == 'image/png'
+
+    def test_oversized_size_is_clamped(self, client):
+        rv = client.get('/api/qr?data=hi&size=99999')
+        assert rv.status_code == 200
+
+    def test_invalid_format_falls_back_to_png(self, client):
+        rv = client.get('/api/qr?data=hi&format=evil')
+        assert rv.status_code == 200
+        assert rv.mimetype == 'image/png'
+
+    def test_cache_control_header_set(self, client):
+        # CDN-cacheable — same payload always renders the same QR
+        rv = client.get('/api/qr?data=https://example.com')
+        cc = rv.headers.get('Cache-Control', '')
+        assert 'public' in cc
+        assert 'max-age' in cc
+
+    def test_malicious_color_falls_back_to_default(self, client):
+        rv = client.get('/api/qr?data=hi&fg_color=red;DROP%20TABLE')
+        assert rv.status_code == 200
+
+
 # ── Root redirect ────────────────────────────────────────────────────────────
 
 class TestRoot:

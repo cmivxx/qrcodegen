@@ -268,6 +268,53 @@ def generate():
         return jsonify({'error': 'Generation failed. Check your input data.'}), 500
 
 
+@qr_bp.route('/api/qr', methods=['GET'])
+def qr_image_get():
+    """GET endpoint for embedding QRs as <img src=...>.
+
+    Browsers can't <img src> a POST endpoint, so this is a thin GET shim
+    over the QR pipeline. Takes simple query params, returns raw image
+    bytes inline (no JSON envelope, no attachment header). Output is
+    cacheable — a QR for a stable URL never changes.
+
+    Query params:
+      data       (required) — payload to encode (URL or text)
+      size       (optional) — pixel dimension, default 300, clamped 100–2000
+      format     (optional) — png | svg, default png
+      margin     (optional) — quiet zone modules, default 4, clamped 0–10
+      fg_color   (optional) — #rrggbb foreground, default #000000
+      bg_color   (optional) — #rrggbb background, default #ffffff
+      ec_level   (optional) — L | M | Q | H, default M
+    """
+    args = request.args
+    data = args.get('data', '')[:MAX_DATA_LEN]
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    output_fmt = args.get('format', 'png').lower()
+    if output_fmt not in ALLOWED_OUTPUT_FMTS:
+        output_fmt = 'png'
+    size = _safe_int(args.get('size', 300), 300, MIN_SIZE, MAX_SIZE)
+    margin = _safe_int(args.get('margin', 4), 4, 0, 10)
+    fg = _safe_color(args.get('fg_color'), '#000000')
+    bg = _safe_color(args.get('bg_color'), '#ffffff')
+    ec = ERROR_LEVELS.get(args.get('ec_level', 'M'), ERROR_CORRECT_M)
+
+    try:
+        if output_fmt == 'svg':
+            buf = _make_qr_svg(data, ec, size, margin)
+            mime = 'image/svg+xml'
+        else:
+            buf = _make_qr_png(data, ec, size, margin, fg, bg)
+            mime = 'image/png'
+        resp = send_file(buf, mimetype=mime)
+        # Same payload always yields the same image — let CDNs cache it.
+        resp.headers['Cache-Control'] = 'public, max-age=86400, immutable'
+        return resp
+    except Exception:
+        return jsonify({'error': 'Generation failed. Check your input data.'}), 500
+
+
 @qr_bp.route('/api/generate/download', methods=['POST'])
 def download():
     form = request.form
