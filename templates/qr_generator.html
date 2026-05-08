@@ -1045,6 +1045,13 @@ async function generate() {
 
     updateApiUrl(fd);
 
+    gtag('event', 'generate', {
+      format: currentFormat,
+      content_type: currentFormat === 'qrcode' ? currentContentType : null,
+      output_format: fd.get('output_format'),
+      ec_level: currentFormat === 'qrcode' ? currentEC : null,
+    });
+
     infoBanner.textContent = 'Generated successfully';
     infoBanner.style.display = 'block';
     setTimeout(() => { infoBanner.style.display = 'none'; }, 2000);
@@ -1074,6 +1081,11 @@ async function download(fmt) {
   a.download = (currentFormat === 'qrcode' ? 'qrcode' : currentFormat) + '.' + fmt;
   a.click();
   URL.revokeObjectURL(url);
+  gtag('event', 'download', {
+    format: currentFormat,
+    content_type: currentFormat === 'qrcode' ? currentContentType : null,
+    output_format: fmt,
+  });
 }
 
 // ── API URL display ──
