@@ -1,5 +1,8 @@
 import io
 import re
+import sys
+import json as _json
+import logging
 import base64
 import qrcode
 import qrcode.image.svg
@@ -10,6 +13,29 @@ from barcode.writer import ImageWriter, SVGWriter
 from flask import Blueprint, render_template, request, send_file, jsonify
 
 qr_bp = Blueprint('qr', __name__)
+
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record):
+        d = {'time': self.formatTime(record, '%Y-%m-%dT%H:%M:%S') + f'.{record.msecs:03.0f}'}
+        d.update(record.msg if isinstance(record.msg, dict) else {'message': record.getMessage()})
+        return _json.dumps(d)
+
+_log = logging.getLogger('qrcodegen')
+_log.propagate = False
+_log.setLevel(logging.INFO)
+_h = logging.StreamHandler(sys.stdout)
+_h.setFormatter(_JsonFormatter())
+_log.addHandler(_h)
+
+
+def _req_source():
+    ref = request.referrer or ''
+    return 'ui' if '/generator' in ref else 'api'
+
+
+def _log_event(**kwargs):
+    _log.info(kwargs)
 
 
 _CSP = (
@@ -237,6 +263,7 @@ def generate():
     fmt = form.get('format', 'qrcode')
     output_fmt, size, margin, fg, bg, ec = _parse_common(form)
 
+    source = _req_source()
     try:
         if fmt == 'qrcode':
             data = _build_qr_data(form)
@@ -245,11 +272,15 @@ def generate():
             if output_fmt == 'svg':
                 buf = _make_qr_svg(data, ec, size, margin)
                 b64 = base64.b64encode(buf.getvalue()).decode()
-                return jsonify({'image': f'data:image/svg+xml;base64,{b64}', 'mime': 'image/svg+xml'})
+                resp = jsonify({'image': f'data:image/svg+xml;base64,{b64}', 'mime': 'image/svg+xml'})
             else:
                 buf = _make_qr_png(data, ec, size, margin, fg, bg)
                 b64 = base64.b64encode(buf.getvalue()).decode()
-                return jsonify({'image': f'data:image/png;base64,{b64}', 'mime': 'image/png'})
+                resp = jsonify({'image': f'data:image/png;base64,{b64}', 'mime': 'image/png'})
+            _log_event(event='generate', format=fmt, content_type=form.get('content_type', 'text'),
+                       output_format=output_fmt, ec_level=form.get('ec_level', 'M'),
+                       source=source, status='success')
+            return resp
 
         bc_id = BARCODE_FORMATS.get(fmt)
         if not bc_id:
@@ -262,9 +293,12 @@ def generate():
         buf = _make_barcode_buf(bc_id, data, output_fmt, bar_height, margin, show_text)
         mime = 'image/svg+xml' if output_fmt == 'svg' else 'image/png'
         b64 = base64.b64encode(buf.getvalue()).decode()
+        _log_event(event='generate', format=fmt, output_format=output_fmt,
+                   source=source, status='success')
         return jsonify({'image': f'data:{mime};base64,{b64}', 'mime': mime})
 
     except Exception as e:
+        _log_event(event='generate', format=fmt, source=source, status='error', error=str(e))
         return jsonify({'error': 'Generation failed. Check your input data.'}), 500
 
 
@@ -307,11 +341,14 @@ def qr_image_get():
         else:
             buf = _make_qr_png(data, ec, size, margin, fg, bg)
             mime = 'image/png'
+        _log_event(event='qr_embed', output_format=output_fmt, ec_level=args.get('ec_level', 'M'),
+                   size=size, source='api', status='success')
         resp = send_file(buf, mimetype=mime)
         # Same payload always yields the same image — let CDNs cache it.
         resp.headers['Cache-Control'] = 'public, max-age=86400, immutable'
         return resp
-    except Exception:
+    except Exception as e:
+        _log_event(event='qr_embed', source='api', status='error', error=str(e))
         return jsonify({'error': 'Generation failed. Check your input data.'}), 500
 
 
@@ -321,6 +358,7 @@ def download():
     fmt = form.get('format', 'qrcode')
     output_fmt, size, margin, fg, bg, ec = _parse_common(form)
 
+    source = _req_source()
     try:
         if fmt == 'qrcode':
             data = _build_qr_data(form)
@@ -328,10 +366,16 @@ def download():
                 return jsonify({'error': 'No data provided'}), 400
             if output_fmt == 'svg':
                 buf = _make_qr_svg(data, ec, size, margin)
+                _log_event(event='download', format=fmt, content_type=form.get('content_type', 'text'),
+                           output_format=output_fmt, ec_level=form.get('ec_level', 'M'),
+                           source=source, status='success')
                 return send_file(buf, mimetype='image/svg+xml', as_attachment=True,
                                  download_name='qrcode.svg')
             else:
                 buf = _make_qr_png(data, ec, size, margin, fg, bg)
+                _log_event(event='download', format=fmt, content_type=form.get('content_type', 'text'),
+                           output_format=output_fmt, ec_level=form.get('ec_level', 'M'),
+                           source=source, status='success')
                 return send_file(buf, mimetype='image/png', as_attachment=True,
                                  download_name='qrcode.png')
 
@@ -346,7 +390,10 @@ def download():
         buf = _make_barcode_buf(bc_id, data, output_fmt, bar_height, margin, show_text)
         mime = 'image/svg+xml' if output_fmt == 'svg' else 'image/png'
         dl_name = f'{fmt}.{output_fmt}'
+        _log_event(event='download', format=fmt, output_format=output_fmt,
+                   source=source, status='success')
         return send_file(buf, mimetype=mime, as_attachment=True, download_name=dl_name)
 
     except Exception as e:
+        _log_event(event='download', format=fmt, source=source, status='error', error=str(e))
         return jsonify({'error': 'Generation failed. Check your input data.'}), 500
