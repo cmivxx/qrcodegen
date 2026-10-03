@@ -5,6 +5,8 @@ from flask import Flask, redirect
 from qr_generator import qr_bp
 
 app = Flask(__name__)
+# Caps the whole multipart body (logo upload + form fields).
+app.config['MAX_CONTENT_LENGTH'] = 3 * 1024 * 1024
 app.register_blueprint(qr_bp)
 
 @app.route('/')

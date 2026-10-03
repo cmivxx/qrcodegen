@@ -44,7 +44,7 @@
 │   Wi-Fi Network         Codabar                PNG or SVG output│
 │   Contact (MECARD)                                              │
 │   Geo Location          🌙  Dark & Light theme                  │
-│   Calendar Event        ⚡  Live preview                        │
+│   Calendar Event        ⚡  Live preview       Logo overlay (QR) │
 │                         💾  One-click download                  │
 │                         🔗  Shareable API URLs                  │
 │                                                                 │
@@ -156,6 +156,26 @@ Returns the file directly as a binary attachment.
 | `ec_level` | `L`, `M`, `Q`, `H` | `M` | QR error correction |
 | `fg_color` | `#rrggbb` | `#000000` | Foreground color |
 | `bg_color` | `#rrggbb` | `#ffffff` | Background color |
+
+### Logo overlay (QR only)
+
+Send the request as `multipart/form-data` to add a logo to the center of a QR code.
+Supplying a logo forces error correction to `H` so the covered modules stay recoverable.
+
+| Parameter | Values | Default | Description |
+|---|---|---|---|
+| `logo` | file: PNG, JPEG, WebP, GIF (max 2 MB, 16 MP) | none | Logo image. SVG uploads are rejected; animated images use the first frame |
+| `logo_size` | `10`–`30` | `20` | Logo width as a % of the code area (excluding the quiet zone) |
+| `logo_pad` | `true`, `false` | `true` | Clear a background-colored box behind the logo, snapped to whole modules |
+
+```bash
+curl -X POST https://qrcode.chrisrmiller.com/api/generate/download \
+  -F format=qrcode -F content_type=url -F url=https://example.com \
+  -F output_format=png -F size=600 -F logo=@logo.png -F logo_size=22 \
+  -o qrcode-logo.png
+```
+
+In SVG output the logo is re-encoded as PNG and embedded inline. The `GET /api/qr` embed endpoint does not take a logo.
 
 ### QR content parameters
 

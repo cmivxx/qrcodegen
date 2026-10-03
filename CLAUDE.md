@@ -43,6 +43,16 @@ which 400s).
   override per-route unless you really mean it.
 - **Hard limits:** `MAX_DATA_LEN=2000`, `MIN_SIZE=100`, `MAX_SIZE=2000`.
   These bound rendering memory; raise carefully.
+- **Logo overlay (POST routes only).** Optional multipart `logo` file plus
+  `logo_size` (10–30, % of code width) and `logo_pad`. Validated in
+  `_load_logo` (2 MB cap, PNG/JPEG/WebP/GIF allowlist, 16 MP pixel cap read
+  from the header before decoding; SVG uploads rejected). A logo forces EC
+  level H. Rendering goes through `_render_qr`; SVG output embeds a
+  re-encoded PNG, never the raw upload. `MAX_CONTENT_LENGTH` (3 MB) is set
+  in `preview_app.py`; the 413 handler returns JSON. `/api/qr` has no logo
+  support on purpose (lnklab contract).
+- **UI CSP note:** `img-src` is `'self' data:`, so client-side previews of
+  user files must use data: URLs, not blob: URLs.
 
 ## Repo layout
 

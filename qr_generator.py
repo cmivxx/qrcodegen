@@ -1,4 +1,5 @@
 import io
+import math
 import re
 import sys
 import json as _json
@@ -7,7 +8,7 @@ import base64
 import qrcode
 import qrcode.image.svg
 from qrcode.constants import ERROR_CORRECT_L, ERROR_CORRECT_M, ERROR_CORRECT_Q, ERROR_CORRECT_H
-from PIL import Image
+from PIL import Image, ImageDraw
 import barcode
 from barcode.writer import ImageWriter, SVGWriter
 from flask import Blueprint, render_template, request, send_file, jsonify
@@ -61,6 +62,11 @@ def _security_headers(resp):
     return resp
 
 
+@qr_bp.app_errorhandler(413)
+def _too_large(_e):
+    return jsonify({'error': 'Upload too large. Logo must be 2 MB or smaller.'}), 413
+
+
 ERROR_LEVELS = {'L': ERROR_CORRECT_L, 'M': ERROR_CORRECT_M, 'Q': ERROR_CORRECT_Q, 'H': ERROR_CORRECT_H}
 
 BARCODE_FORMATS = {
@@ -77,6 +83,10 @@ ALLOWED_CONTENT_TYPES = {'text', 'url', 'email', 'phone', 'sms', 'wifi', 'contac
 ALLOWED_OUTPUT_FMTS = {'png', 'svg'}
 ALLOWED_WIFI_AUTH = {'WPA', 'WEP', 'nopass'}
 MAX_DATA_LEN = 2000
+MAX_LOGO_BYTES = 2 * 1024 * 1024          # 2 MB upload cap
+MAX_LOGO_PIXELS = 4096 * 4096             # reject decompression bombs before decoding
+ALLOWED_LOGO_FORMATS = {'PNG', 'JPEG', 'WEBP', 'GIF'}
+LOGO_SIZE_MIN, LOGO_SIZE_MAX, LOGO_SIZE_DEFAULT = 10, 30, 20  # % of code width
 MAX_SIZE = 2000
 MIN_SIZE = 100
 _HEX_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
@@ -213,28 +223,166 @@ def _parse_common(form):
     return output_fmt, size, margin, fg, bg, ec
 
 
-def _make_qr_png(data, ec, size, margin, fg, bg):
+class LogoError(ValueError):
+    """Raised for a logo upload we refuse; message is safe to show the user."""
+
+
+def _load_logo(file_storage):
+    """Validate an uploaded logo and return it as an RGBA PIL image, or None.
+
+    Whitelist-based like the other inputs: size cap, format allowlist,
+    pixel-count cap checked from the header *before* decoding.
+    """
+    if file_storage is None or not file_storage.filename:
+        return None
+    raw = file_storage.read(MAX_LOGO_BYTES + 1)
+    if not raw:
+        return None
+    if len(raw) > MAX_LOGO_BYTES:
+        raise LogoError('Logo must be 2 MB or smaller.')
+    try:
+        img = Image.open(io.BytesIO(raw))
+        if img.format not in ALLOWED_LOGO_FORMATS:
+            raise LogoError('Logo must be a PNG, JPEG, WebP, or GIF image.')
+        w, h = img.size
+        if w * h > MAX_LOGO_PIXELS:
+            raise LogoError('Logo dimensions are too large.')
+        img.seek(0)          # first frame of animated GIF/WebP
+        img.load()
+    except LogoError:
+        raise
+    except Exception:
+        raise LogoError('Could not read the logo image.')
+    return img.convert('RGBA')
+
+
+def _parse_logo_opts(form):
+    pct = _safe_int(form.get('logo_size', LOGO_SIZE_DEFAULT), LOGO_SIZE_DEFAULT,
+                    LOGO_SIZE_MIN, LOGO_SIZE_MAX)
+    pad = form.get('logo_pad', 'true') != 'false'
+    return pct, pad
+
+
+def _logo_geometry(modules, margin, total, pct):
+    """Return (box, pad) for a centered logo, in the same units as `total`.
+
+    `box` is the logo's square edge (pct of the code area, excluding the
+    quiet zone); `pad` is the clear border drawn around it.
+    """
+    code_width = total * modules / float(modules + 2 * margin)
+    box = code_width * pct / 100.0
+    pad = max(code_width / modules, box * 0.08)   # at least one module
+    return box, pad
+
+
+def _snap_pad_rect(cx, cy, w, h, pad, modules, margin, total):
+    """Grow the logo's clear area out to whole-module boundaries.
+
+    Avoids slicing modules in half, which looks rough and can confuse
+    scanners. Returns (x0, y0, x1, y1) in the same units as `total`.
+    """
+    unit = total / float(modules + 2 * margin)
+    origin = margin * unit
+
+    def lo(v):
+        return origin + math.floor((v - origin) / unit) * unit
+
+    def hi(v):
+        return origin + math.ceil((v - origin) / unit) * unit
+
+    return (lo(cx - w / 2.0 - pad), lo(cy - h / 2.0 - pad),
+            hi(cx + w / 2.0 + pad), hi(cy + h / 2.0 + pad))
+
+
+def _fit_logo(logo, box_px):
+    fitted = logo.copy()
+    fitted.thumbnail((box_px, box_px), Image.LANCZOS)
+    return fitted
+
+
+def _make_qr_png(data, ec, size, margin, fg, bg, logo=None, logo_pct=LOGO_SIZE_DEFAULT, logo_pad=True):
     box_size = max(1, size // (21 + margin * 2))
     qr = qrcode.QRCode(error_correction=ec, box_size=box_size, border=margin)
     qr.add_data(data)
     qr.make(fit=True)
     pil_img = qr.make_image(fill_color=fg, back_color=bg)
     pil_img = pil_img.resize((size, size), Image.LANCZOS)
+    if logo is not None:
+        pil_img = pil_img.convert('RGBA')
+        box, pad = _logo_geometry(qr.modules_count, margin, size, logo_pct)
+        fitted = _fit_logo(logo, max(1, int(round(box))))
+        lw, lh = fitted.size
+        cx, cy = size / 2.0, size / 2.0
+        if logo_pad:
+            draw = ImageDraw.Draw(pil_img)
+            x0, y0, x1, y1 = _snap_pad_rect(cx, cy, lw, lh, pad, qr.modules_count, margin, size)
+            draw.rectangle([int(round(x0)), int(round(y0)), int(round(x1)) - 1, int(round(y1)) - 1], fill=bg)
+        pil_img.alpha_composite(fitted, (int(round(cx - lw / 2.0)), int(round(cy - lh / 2.0))))
+        pil_img = pil_img.convert('RGB')
     buf = io.BytesIO()
     pil_img.save(buf, format='PNG')
     buf.seek(0)
     return buf
 
 
-def _make_qr_svg(data, ec, size, margin):
+_SVG_WIDTH_RE = re.compile(r'<svg[^>]*\swidth="([0-9.]+)mm"')
+
+
+def _make_qr_svg(data, ec, size, margin, logo=None, logo_pct=LOGO_SIZE_DEFAULT, logo_pad=True, bg='#ffffff'):
     box_size = max(1, size // (21 + margin * 2))
     factory = qrcode.image.svg.SvgImage
     img = qrcode.make(data, error_correction=ec, box_size=box_size,
                       border=margin, image_factory=factory)
     buf = io.BytesIO()
     img.save(buf)
-    buf.seek(0)
-    return buf
+    if logo is None:
+        buf.seek(0)
+        return buf
+
+    svg = buf.getvalue().decode('utf-8')
+    m = _SVG_WIDTH_RE.search(svg)
+    total = float(m.group(1))
+    box, pad = _logo_geometry(img.width, margin, total, logo_pct)
+    # Embed a re-encoded PNG (never the raw upload) at a sane resolution.
+    embedded = _fit_logo(logo, 512)
+    png = io.BytesIO()
+    embedded.save(png, format='PNG')
+    href = 'data:image/png;base64,' + base64.b64encode(png.getvalue()).decode()
+    lw, lh = embedded.size
+    scale = box / float(max(lw, lh))
+    w, h = lw * scale, lh * scale
+    cx = total / 2.0
+    parts = []
+    if logo_pad:
+        x0, y0, x1, y1 = _snap_pad_rect(cx, cx, w, h, pad, img.width, margin, total)
+        parts.append('<rect x="{:.3f}mm" y="{:.3f}mm" width="{:.3f}mm" height="{:.3f}mm" '
+                     'fill="{}"/>'.format(x0, y0, x1 - x0, y1 - y0, bg))
+    parts.append('<image x="{:.3f}mm" y="{:.3f}mm" width="{:.3f}mm" height="{:.3f}mm" '
+                 'href="{}" xlink:href="{}" xmlns:xlink="http://www.w3.org/1999/xlink"/>'
+                 .format(cx - w / 2, cx - h / 2, w, h, href, href))
+    idx = svg.rfind('</svg>')
+    svg = svg[:idx] + ''.join(parts) + svg[idx:]
+    out = io.BytesIO(svg.encode('utf-8'))
+    out.seek(0)
+    return out
+
+
+def _render_qr(form, data, output_fmt, size, margin, fg, bg, ec):
+    """Shared QR render for the POST routes. Handles the optional logo.
+
+    A logo forces error-correction H so the covered modules are recoverable.
+    Returns (buf, mime, ec_label, has_logo).
+    """
+    logo = _load_logo(request.files.get('logo'))
+    ec_label = form.get('ec_level', 'M')
+    logo_pct, logo_pad = _parse_logo_opts(form)
+    if logo is not None:
+        ec, ec_label = ERROR_CORRECT_H, 'H'
+    if output_fmt == 'svg':
+        buf = _make_qr_svg(data, ec, size, margin, logo, logo_pct, logo_pad, bg)
+        return buf, 'image/svg+xml', ec_label, logo is not None
+    buf = _make_qr_png(data, ec, size, margin, fg, bg, logo, logo_pct, logo_pad)
+    return buf, 'image/png', ec_label, logo is not None
 
 
 def _make_barcode_buf(fmt, data, output_fmt, bar_height, margin, show_text):
@@ -269,16 +417,11 @@ def generate():
             data = _build_qr_data(form)
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
-            if output_fmt == 'svg':
-                buf = _make_qr_svg(data, ec, size, margin)
-                b64 = base64.b64encode(buf.getvalue()).decode()
-                resp = jsonify({'image': f'data:image/svg+xml;base64,{b64}', 'mime': 'image/svg+xml'})
-            else:
-                buf = _make_qr_png(data, ec, size, margin, fg, bg)
-                b64 = base64.b64encode(buf.getvalue()).decode()
-                resp = jsonify({'image': f'data:image/png;base64,{b64}', 'mime': 'image/png'})
+            buf, mime, ec_label, has_logo = _render_qr(form, data, output_fmt, size, margin, fg, bg, ec)
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            resp = jsonify({'image': f'data:{mime};base64,{b64}', 'mime': mime})
             _log_event(event='generate', format=fmt, content_type=form.get('content_type', 'text'),
-                       output_format=output_fmt, ec_level=form.get('ec_level', 'M'),
+                       output_format=output_fmt, ec_level=ec_label, logo=has_logo,
                        source=source, status='success')
             return resp
 
@@ -297,6 +440,9 @@ def generate():
                    source=source, status='success')
         return jsonify({'image': f'data:{mime};base64,{b64}', 'mime': mime})
 
+    except LogoError as e:
+        _log_event(event='generate', format=fmt, source=source, status='rejected', error=str(e))
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         _log_event(event='generate', format=fmt, source=source, status='error', error=str(e))
         return jsonify({'error': 'Generation failed. Check your input data.'}), 500
@@ -364,20 +510,12 @@ def download():
             data = _build_qr_data(form)
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
-            if output_fmt == 'svg':
-                buf = _make_qr_svg(data, ec, size, margin)
-                _log_event(event='download', format=fmt, content_type=form.get('content_type', 'text'),
-                           output_format=output_fmt, ec_level=form.get('ec_level', 'M'),
-                           source=source, status='success')
-                return send_file(buf, mimetype='image/svg+xml', as_attachment=True,
-                                 download_name='qrcode.svg')
-            else:
-                buf = _make_qr_png(data, ec, size, margin, fg, bg)
-                _log_event(event='download', format=fmt, content_type=form.get('content_type', 'text'),
-                           output_format=output_fmt, ec_level=form.get('ec_level', 'M'),
-                           source=source, status='success')
-                return send_file(buf, mimetype='image/png', as_attachment=True,
-                                 download_name='qrcode.png')
+            buf, mime, ec_label, has_logo = _render_qr(form, data, output_fmt, size, margin, fg, bg, ec)
+            _log_event(event='download', format=fmt, content_type=form.get('content_type', 'text'),
+                       output_format=output_fmt, ec_level=ec_label, logo=has_logo,
+                       source=source, status='success')
+            return send_file(buf, mimetype=mime, as_attachment=True,
+                             download_name='qrcode.' + output_fmt)
 
         bc_id = BARCODE_FORMATS.get(fmt)
         if not bc_id:
@@ -394,6 +532,9 @@ def download():
                    source=source, status='success')
         return send_file(buf, mimetype=mime, as_attachment=True, download_name=dl_name)
 
+    except LogoError as e:
+        _log_event(event='download', format=fmt, source=source, status='rejected', error=str(e))
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         _log_event(event='download', format=fmt, source=source, status='error', error=str(e))
         return jsonify({'error': 'Generation failed. Check your input data.'}), 500

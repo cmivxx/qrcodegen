@@ -561,6 +561,51 @@
     background: rgba(108,99,255,0.1);
   }
 
+  /* ── Logo upload ── */
+  .logo-drop {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--input-bg);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color var(--transition);
+  }
+  .logo-drop:hover, .logo-drop.dragover { border-color: var(--accent); }
+  .logo-drop input[type="file"] { display: none; }
+  .logo-thumb {
+    width: 40px; height: 40px;
+    border-radius: 6px;
+    background: var(--surface2);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 18px;
+  }
+  .logo-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .logo-meta { flex: 1; min-width: 0; font-size: 0.8rem; color: var(--text-muted); }
+  .logo-meta strong {
+    display: block;
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .btn-remove-logo {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+  .btn-remove-logo:hover { border-color: var(--danger); color: var(--danger); }
+  .logo-note { font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; }
+  .ec-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
   /* ── Hidden ── */
   .hidden { display: none !important; }
 
@@ -790,6 +835,32 @@
         <button class="ec-btn" data-ec="Q">Q <span style="font-weight:400;font-size:0.7rem">25%</span></button>
         <button class="ec-btn" data-ec="H">H <span style="font-weight:400;font-size:0.7rem">30%</span></button>
       </div>
+
+      <p class="section-title">Logo (optional)</p>
+      <label class="logo-drop" id="logo-drop">
+        <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp,image/gif">
+        <div class="logo-thumb" id="logo-thumb">&#43;</div>
+        <div class="logo-meta" id="logo-meta">
+          <strong>Add a logo</strong>
+          PNG, JPEG, WebP or GIF, up to 2 MB
+        </div>
+        <button type="button" class="btn-remove-logo hidden" id="btn-remove-logo">Remove</button>
+      </label>
+      <div id="logo-settings" class="hidden">
+        <div class="field" style="margin-top:0.9rem">
+          <label>Logo Size (% of code width)</label>
+          <div class="slider-row">
+            <input type="range" id="logo-size-range" min="10" max="30" value="20"
+                   oninput="document.getElementById('logo-size-val').textContent=this.value+'%'">
+            <span class="slider-val" id="logo-size-val">20%</span>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Background behind logo</span>
+          <label class="toggle"><input type="checkbox" id="logo-pad" checked><span class="toggle-slider"></span></label>
+        </div>
+        <p class="logo-note">Error correction is locked to H while a logo is set so the code still scans. Test-scan before printing, especially above 25%.</p>
+      </div>
     </div>
 
     <!-- ══ 1D Barcode options ══ -->
@@ -912,6 +983,9 @@ let currentContentType = 'text';
 let currentEC = 'M';
 let lastImageDataUrl = null;
 let lastMime = null;
+let logoFile = null;
+let ecBeforeLogo = 'M';
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
 // ── Theme ──
 function toggleTheme() {
@@ -949,14 +1023,78 @@ document.querySelectorAll('.pill').forEach(pill => {
 });
 
 // ── EC buttons ──
+function setEC(level) {
+  document.querySelectorAll('.ec-btn').forEach(b => b.classList.toggle('active', b.dataset.ec === level));
+  currentEC = level;
+  document.getElementById('ec-input').value = level;
+}
 document.querySelectorAll('.ec-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.ec-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentEC = btn.dataset.ec;
-    document.getElementById('ec-input').value = currentEC;
-  });
+  btn.addEventListener('click', () => setEC(btn.dataset.ec));
 });
+
+// ── Logo ──
+function showError(msg) {
+  const eb = document.getElementById('error-banner');
+  eb.textContent = msg;
+  eb.style.display = 'block';
+}
+function setLogo(file) {
+  if (!file) return;
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+    showError('Logo must be a PNG, JPEG, WebP, or GIF image.');
+    return;
+  }
+  if (file.size > MAX_LOGO_BYTES) {
+    showError('Logo must be 2 MB or smaller.');
+    return;
+  }
+  document.getElementById('error-banner').style.display = 'none';
+  if (!logoFile) ecBeforeLogo = currentEC;
+  logoFile = file;
+  const thumb = document.getElementById('logo-thumb');
+  thumb.innerHTML = '';
+  const im = document.createElement('img');
+  im.alt = '';
+  // data: URL, not blob:, because the CSP img-src allows 'self' and data: only
+  const reader = new FileReader();
+  reader.onload = () => { im.src = reader.result; };
+  reader.readAsDataURL(file);
+  thumb.appendChild(im);
+  const meta = document.getElementById('logo-meta');
+  meta.innerHTML = '';
+  const nm = document.createElement('strong');
+  nm.textContent = file.name;
+  meta.appendChild(nm);
+  meta.appendChild(document.createTextNode(Math.max(1, Math.round(file.size / 1024)) + ' KB'));
+  document.getElementById('btn-remove-logo').classList.remove('hidden');
+  document.getElementById('logo-settings').classList.remove('hidden');
+  setEC('H');
+  document.querySelectorAll('.ec-btn').forEach(b => { b.disabled = b.dataset.ec !== 'H'; });
+}
+function clearLogo() {
+  logoFile = null;
+  document.getElementById('logo-file').value = '';
+  document.getElementById('logo-thumb').innerHTML = '&#43;';
+  document.getElementById('logo-meta').innerHTML = '<strong>Add a logo</strong>PNG, JPEG, WebP or GIF, up to 2 MB';
+  document.getElementById('btn-remove-logo').classList.add('hidden');
+  document.getElementById('logo-settings').classList.add('hidden');
+  document.querySelectorAll('.ec-btn').forEach(b => { b.disabled = false; });
+  setEC(ecBeforeLogo);
+}
+document.getElementById('logo-file').addEventListener('change', e => setLogo(e.target.files[0]));
+document.getElementById('btn-remove-logo').addEventListener('click', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  clearLogo();
+});
+const logoDrop = document.getElementById('logo-drop');
+['dragenter', 'dragover'].forEach(ev => logoDrop.addEventListener(ev, e => {
+  e.preventDefault(); logoDrop.classList.add('dragover');
+}));
+['dragleave', 'drop'].forEach(ev => logoDrop.addEventListener(ev, e => {
+  e.preventDefault(); logoDrop.classList.remove('dragover');
+}));
+logoDrop.addEventListener('drop', e => setLogo(e.dataTransfer.files[0]));
 
 // ── Color sync ──
 function syncColor(which, val) {
@@ -983,6 +1121,12 @@ function collectFormData() {
 
   const ofmt = document.querySelector('[name=output_format]:checked');
   fd.append('output_format', ofmt ? ofmt.value : 'png');
+
+  if (currentFormat === 'qrcode' && logoFile) {
+    fd.append('logo', logoFile, logoFile.name);
+    fd.append('logo_size', document.getElementById('logo-size-range').value);
+    fd.append('logo_pad', document.getElementById('logo-pad').checked ? 'true' : 'false');
+  }
 
   // All named inputs in active content form
   const activeForm = document.getElementById('cf-' + currentContentType);
@@ -1050,6 +1194,7 @@ async function generate() {
       content_type: currentFormat === 'qrcode' ? currentContentType : null,
       output_format: fd.get('output_format'),
       ec_level: currentFormat === 'qrcode' ? currentEC : null,
+      logo: currentFormat === 'qrcode' && !!logoFile,
     });
 
     infoBanner.textContent = 'Generated successfully';
@@ -1073,7 +1218,12 @@ async function download(fmt) {
   fd.set('output_format', fmt);
 
   const res = await fetch('/api/generate/download', { method: 'POST', body: fd });
-  if (!res.ok) { alert('Download failed'); return; }
+  if (!res.ok) {
+    let msg = 'Download failed';
+    try { msg = (await res.json()).error || msg; } catch (_) {}
+    showError(msg);
+    return;
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1091,7 +1241,9 @@ async function download(fmt) {
 // ── API URL display ──
 function updateApiUrl(fd) {
   const params = new URLSearchParams();
-  for (const [k, v] of fd.entries()) params.set(k, v);
+  for (const [k, v] of fd.entries()) {
+    if (typeof v === 'string') params.set(k, v);   // skip the logo File
+  }
   const url = window.location.origin + '/api/generate?' + params.toString();
   document.getElementById('api-url-display').value = url;
 }

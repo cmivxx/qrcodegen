@@ -272,3 +272,119 @@ class TestSecurityHeaders:
         })
         assert rv.headers.get('X-Content-Type-Options') == 'nosniff'
         assert 'Content-Security-Policy' in rv.headers
+
+
+# ── Logo overlay (POST routes only) ──────────────────────────────────────────
+
+def _logo_png(w=200, h=120, color=(108, 99, 255, 255)):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new('RGBA', (w, h), color).save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+
+def _qr_form(**extra):
+    form = {'format': 'qrcode', 'content_type': 'url', 'url': 'https://example.com',
+            'output_format': 'png', 'size': '400', 'margin': '4'}
+    form.update(extra)
+    return form
+
+
+class TestLogo:
+    def test_png_with_logo_returns_png(self, client):
+        rv = client.post('/api/generate', data=_qr_form(logo=(_logo_png(), 'logo.png')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 200
+        b64 = rv.get_json()['image'].split(',', 1)[1]
+        assert base64.b64decode(b64)[:8] == b'\x89PNG\r\n\x1a\n'
+
+    def test_logo_changes_output(self, client):
+        plain = client.post('/api/generate', data=_qr_form(ec_level='H')).get_json()['image']
+        with_logo = client.post('/api/generate', data=_qr_form(ec_level='H', logo=(_logo_png(), 'l.png')),
+                                content_type='multipart/form-data').get_json()['image']
+        assert plain != with_logo
+
+    def test_logo_forces_ec_h(self, client):
+        # With a logo, ec_level=L must render identically to ec_level=H.
+        low = client.post('/api/generate', data=_qr_form(ec_level='L', logo=(_logo_png(), 'l.png')),
+                          content_type='multipart/form-data').get_json()['image']
+        high = client.post('/api/generate', data=_qr_form(ec_level='H', logo=(_logo_png(), 'l.png')),
+                           content_type='multipart/form-data').get_json()['image']
+        assert low == high
+
+    def test_svg_with_logo_embeds_png_image(self, client):
+        rv = client.post('/api/generate/download',
+                         data=_qr_form(output_format='svg', logo=(_logo_png(), 'logo.png')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 200
+        assert rv.mimetype == 'image/svg+xml'
+        assert b'<image' in rv.data
+        assert b'data:image/png;base64,' in rv.data
+        assert rv.data.rstrip().endswith(b'</svg>')
+
+    def test_png_download_with_logo(self, client):
+        rv = client.post('/api/generate/download', data=_qr_form(logo=(_logo_png(), 'logo.png')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 200
+        assert rv.mimetype == 'image/png'
+        assert 'attachment' in rv.headers['Content-Disposition']
+
+    def test_jpeg_logo_accepted(self, client):
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new('RGB', (100, 100), (255, 0, 0)).save(buf, format='JPEG')
+        buf.seek(0)
+        rv = client.post('/api/generate', data=_qr_form(logo=(buf, 'logo.jpg')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 200
+
+    def test_non_image_logo_rejected(self, client):
+        import io
+        rv = client.post('/api/generate', data=_qr_form(logo=(io.BytesIO(b'not an image'), 'x.png')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 400
+        assert 'logo' in rv.get_json()['error'].lower()
+
+    def test_svg_logo_upload_rejected(self, client):
+        import io
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        rv = client.post('/api/generate', data=_qr_form(logo=(io.BytesIO(svg), 'x.svg')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 400
+
+    def test_oversized_logo_rejected(self, client):
+        import io
+        big = io.BytesIO(b'\x89PNG' + b'0' * (2 * 1024 * 1024 + 1))
+        rv = client.post('/api/generate', data=_qr_form(logo=(big, 'big.png')),
+                         content_type='multipart/form-data')
+        assert rv.status_code in (400, 413)
+        assert 'error' in rv.get_json()
+
+    def test_empty_file_field_ignored(self, client):
+        import io
+        rv = client.post('/api/generate', data=_qr_form(logo=(io.BytesIO(b''), '')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 200
+
+    def test_logo_size_clamped(self, client):
+        rv = client.post('/api/generate', data=_qr_form(logo_size='95', logo=(_logo_png(), 'l.png')),
+                         content_type='multipart/form-data')
+        assert rv.status_code == 200
+
+    def test_logo_ignored_for_barcodes(self, client):
+        rv = client.post('/api/generate', data={
+            'format': 'code128', 'barcode_data': 'ABC123', 'output_format': 'png',
+            'logo': (_logo_png(), 'l.png')}, content_type='multipart/form-data')
+        assert rv.status_code == 200
+
+    def test_get_endpoint_unchanged(self, client):
+        rv = client.get('/api/qr?data=https://example.com')
+        assert rv.status_code == 200
+        assert rv.mimetype == 'image/png'
+
+    def test_ui_has_logo_controls(self, client):
+        rv = client.get('/generator')
+        assert b'id="logo-file"' in rv.data
